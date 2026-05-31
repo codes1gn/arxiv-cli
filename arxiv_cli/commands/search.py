@@ -61,10 +61,13 @@ def run_recent(args):
         raw = client.results(search)
         results = []
         for p in raw:
-            if p.published and p.published.replace(tzinfo=timezone.utc) < cutoff.replace(tzinfo=None).__class__(
-                cutoff.year, cutoff.month, cutoff.day, tzinfo=timezone.utc
-            ):
-                break
+            if p.published:
+                pub = p.published
+                # Normalize to UTC-aware if the datetime is naive
+                if pub.tzinfo is None:
+                    pub = pub.replace(tzinfo=timezone.utc)
+                if pub < cutoff:
+                    break
             results.append(p)
             if len(results) >= limit:
                 break
