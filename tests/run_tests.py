@@ -245,16 +245,12 @@ CHECKS = {
 
 # ─── Runner ──────────────────────────────────────────────────────────────────
 
-def run_scenario(scenario_id, runs):
+def run_scenario_once(scenario_id):
+    """Run all checks for a scenario once, returning (scenario_id, passed, total)."""
     fn = CHECKS[scenario_id]
-    passed = 0
-    total = 0
-    for _ in range(runs):
-        checks = fn()
-        for _, result in checks:
-            total += 1
-            if result:
-                passed += 1
+    checks = fn()
+    passed = sum(1 for _, result in checks if result)
+    total = len(checks)
     return scenario_id, passed, total
 
 
@@ -266,16 +262,18 @@ def main():
 
     print(f"🔬 arxiv-cli test suite — {len(SCENARIOS)} scenarios × {args.runs} runs × {args.workers} workers")
     checks_per_run = sum(len(CHECKS[s]()) for s in SCENARIOS)
-    print(f"   Expected: ~{checks_per_run * args.runs * args.workers // args.workers:,} checks")
+    print(f"   Expected: ~{checks_per_run * args.runs * args.workers:,} checks")
 
     t0 = time.time()
-    results = {}
+    results = {s: (0, 0) for s in SCENARIOS}
+    tasks = [s for s in SCENARIOS for _ in range(args.workers * args.runs)]
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(run_scenario, s, args.runs): s for s in SCENARIOS}
+        futures = [pool.submit(run_scenario_once, s) for s in tasks]
         for future in concurrent.futures.as_completed(futures):
             sid, passed, total = future.result()
-            results[sid] = (passed, total)
+            prev_p, prev_t = results[sid]
+            results[sid] = (prev_p + passed, prev_t + total)
 
     print(f"\n{'ID':<4} {'Scenario':<32} {'Passed/Total':<16} {'Rate'}")
     print("─" * 68)
